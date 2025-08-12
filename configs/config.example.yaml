@@ -1,0 +1,15 @@
+server:
+  port: "8080"
+
+database:
+  dialect: "mysql"
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "password"
+  name: "library_db"
+  enabled: false  
+
+jwt:
+  secret: "CHANGE_ME_LONG_RANDOM"
+  expires_in: "24h"
