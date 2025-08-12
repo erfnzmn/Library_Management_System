@@ -1,0 +1,12 @@
+server:
+  port: "8080"
+
+
+database:
+  dialect: "sqlite"
+  dsn: "file:library.db?cache=shared&mode=rwc"
+
+
+jwt:
+  secret: "CHANGE_ME_LONG_RANDOM"
+  expires_in: "24h"
