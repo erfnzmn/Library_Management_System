@@ -1,11 +1,14 @@
 server:
   port: "8080"
 
-
 database:
-  dialect: "sqlite"
-  dsn: "file:library.db?cache=shared&mode=rwc"
-
+  dialect: "mysql"
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "password"
+  name: "library_db"
+  enabled: false  
 
 jwt:
   secret: "CHANGE_ME_LONG_RANDOM"
