@@ -41,7 +41,8 @@
     - User can filter list by: genre, tags, date of publication and status.
 6. View books details
     - User clicks to see book details such as copies available, description, reservation/sell buttons and overall details.
-7. Favorite - User wants ti add a specific book to his favorite books list. 8. Integrate with selling - copies marked as "for sale" can be purchased.
+7. Favorite Books
+    - User wants ti add a specific book to his favorite books list. 8. Integrate with selling - copies marked as "for sale" can be purchased.
 
 ## Scenarios
 
