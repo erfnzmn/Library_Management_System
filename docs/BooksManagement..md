@@ -41,8 +41,8 @@
     - User can filter list by: genre, tags, date of publication and status.
 6. View books details
     - User clicks to see book details such as copies available, description, reservation/sell buttons and overall details.
-7. Integrate with selling
-    - copies marked as "for sale" can be purchased.
+7. Favorite Books
+    - User wants ti add a specific book to his favorite books list. 8. Integrate with selling - copies marked as "for sale" can be purchased.
 
 ## Scenarios
 
@@ -64,8 +64,15 @@ Let’s walk through typical scenarios:
 ### Scenario C: A user wants to buy a book
 
 - User searches or browses books.
-- System if the book is available for sale.
+- System shows if the book is available for sale.
 - User clicks “Buy”, handled by selling module.
+
+### Scenario D: User wants to add a book to their favorites
+
+- First, user needs to find the book he is looking for using search, filter or browsing through the list.
+- Clicks on the book to see the details.
+- On book detail page clicks on the "Add to favorites" button.
+- System adds the book to users favorites and shows a success message.
 
 ## Integration points
 
