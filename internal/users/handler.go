@@ -3,64 +3,76 @@ package users
 import (
 	"net/http"
 	"strconv"
+	"time"
 
-	"github.com/labstack/echo"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
-type UserHandler struct {
-	service UserService
+type Handler struct {
+	svc       *Service
+	jwtSecret string
+	jwtTTL    time.Duration
 }
 
-func NewUserHandler(service userService) *UserHandler {
-	return &UserHandler{service: &service}
-}
-func (h *UserHandler) RegisterRoutes(e *echo.Echo) {
+func RegisterUserRoutes(r *gin.Engine, db *gorm.DB, jwtSecret string, jwtTTL time.Duration) {
+	_ = db.AutoMigrate(&User{}) 
+	repo := NewRepository(db)
+	svc := NewService(repo)
+	h := &Handler{svc: svc, jwtSecret: jwtSecret, jwtTTL: jwtTTL}
 
-	e.Post("/users", h.service.Register)
-	e.Get("/users", h.service.GetUsers)
-	e.Get("/users/:id", h.service.GetUser)
-	e.Put("/users/:id", h.service.UpdateUser)
-	e.Delete("/users/:id", h.service.DeleteUser)
+	r.POST("/users/signup", h.Signup)
 }
-func (h *UserHandler) Register(c echo.context) error {
-	var user User
-	if err := c.Bind(&user); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+
+func (h *Handler) Signup(c *gin.Context) {
+	var req SignupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "detail": err.Error()})
+		return
 	}
-	newUser, err := h.service.Register(user)
+
+	u, err := h.svc.Signup(req.Name, req.Email, req.Password)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		status := http.StatusInternalServerError
+		if err == ErrEmailInUse {
+			status = http.StatusConflict
+		}
+		if err == ErrWeakPassword {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
 	}
-	return c.JSON(http.StatusCreated, newUser)
-}
-func (h *UserHandler) GetUsers(c echo.Context) error {
-	users, _ := h.service.GetUsers()
-	return c.JSON(http.StatusOK, users)
-}
-func (h *UserHandler) GetUser(c echo.context) error {
-	id, _ := strconv.Atoi(c.Param("id"))
-	user, err := h.service.GetUser(id)
+
+	token, expSec, err := h.createJWT(u.ID, u.Role)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
+		return
 	}
-	return c.JSON(http.StatusOK, user)
+
+	c.JSON(http.StatusCreated, gin.H{
+		"access_token": token,
+		"token_type":   "Bearer",
+		"expires_in":   expSec,
+		"user":         u,
+	})
 }
 
-func (h *UserHandler) UpdateUser(c echo.Context) error {
-	id, _ := strconv.Atoi(c.Param("id"))
-	var user User
-	if err := c.Bind(&user); err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+func (h *Handler) createJWT(userID uint, role string) (string, int64, error) {
+	now := time.Now()
+	exp := now.Add(h.jwtTTL)
 
+	claims := jwt.MapClaims{
+		"sub":  strconv.Itoa(int(userID)),
+		"role": role,
+		"iat":  now.Unix(),
+		"exp":  exp.Unix(),
 	}
-	return c.JSON(http.StatusOK, h.UpdateUser)
-}
-func (h *UserHandler) DeleteUser(c echo.Context) error {
-	id, _ := strconv.Atoi(c.Param("id"))
-	err := h.service.DeleteUser(id)
+	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := t.SignedString([]byte(h.jwtSecret))
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
-
+		return "", 0, err
 	}
-	return c.Json(http.StatusNoContent)
+	return signed, exp.Unix() - now.Unix(), nil
 }

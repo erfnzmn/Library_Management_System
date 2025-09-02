@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"strings"
+    users "github.com/erfnzmn/Library_Management_System/internal/users"
 )
 
 type Config struct {
@@ -35,6 +37,8 @@ func loadConfig() (*Config, error) {
 	viper.AddConfigPath("configs")
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) 
+	viper.BindEnv("jwt.secret")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -49,7 +53,6 @@ func loadConfig() (*Config, error) {
 
 // اتصال به MySQL با GORM
 func openDB(cfg *Config) (*gorm.DB, error) {
-	// اگر dsn مستقیم در config ندادی، از فیلدها بساز
 	dsn := cfg.Database.DSN
 	if dsn == "" {
 		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC",
@@ -77,33 +80,46 @@ func openDB(cfg *Config) (*gorm.DB, error) {
 }
 
 func main() {
-	cfg, err := loadConfig()
-	if err != nil {
-		log.Fatalf("config error: %v", err)
-	}
+    cfg, err := loadConfig()
+    if err != nil {
+        log.Fatalf("config error: %v", err)
+    }
 
-	r := gin.Default()
-	_ = r.SetTrustedProxies(nil) // برای dev هشدار پروکسی را می‌گیرد
+    r := gin.Default()
+    _ = r.SetTrustedProxies(nil)
 
-	// health check
-	r.GET("/healthz", func(c *gin.Context) {
-		c.JSON(200, gin.H{"ok": true, "time": time.Now().UTC()})
-	})
+    // health check
+    r.GET("/healthz", func(c *gin.Context) {
+        c.JSON(200, gin.H{"ok": true, "time": time.Now().UTC()})
+    })
 
-	// اگر در config فعال باشد، به DB وصل شو
-	if cfg.Database.Enabled {
-		log.Printf("DB connecting to %s:%d (db=%s)...", cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
-		db, err := openDB(cfg)
-		if err != nil {
-			log.Fatalf("db error: %v", err)
-		}
-		sqlDB, _ := db.DB()
-		defer sqlDB.Close()
-		log.Printf("DB connected ✔")
-	}
+    var db *gorm.DB
 
-	log.Printf("server listening on :%s", cfg.Server.Port)
-	if err := r.Run(":" + cfg.Server.Port); err != nil {
-		log.Fatal(err)
-	}
+    //اتصال دیتابیس
+    if cfg.Database.Enabled {
+        log.Printf("DB connecting to %s:%d (db=%s)...", cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
+        db, err = openDB(cfg)
+        if err != nil {
+            log.Fatalf("db error: %v", err)
+        }
+        sqlDB, _ := db.DB()
+        defer sqlDB.Close()
+        log.Printf("DB connected ✔")
+    }
+
+    jwtSecret := cfg.JWT.Secret
+    jwtTTL, err := time.ParseDuration(cfg.JWT.ExpiresIn)
+    if err != nil || jwtTTL <= 0 {
+        jwtTTL = time.Hour
+    }
+    if db != nil {
+        users.RegisterUserRoutes(r, db, jwtSecret, jwtTTL)
+    }
+
+    // 4) اجرای سرور
+    log.Printf("server listening on :%s", cfg.Server.Port)
+    if err := r.Run(":" + cfg.Server.Port); err != nil {
+        log.Fatal(err)
+    }
 }
+

@@ -1,32 +1,77 @@
 package users
 
-type UserService interface {
-	Register(user User) (User, error)
-	GetUser(id int) (User, error)
-	GetUsers() ([]User, error)
-	UpdateUser(user User) (User, error)
-	DeleteUser(id int) error
-}
-type userService struct {
-	repo userrepository
+import (
+	"errors"
+	"strings"
+	"unicode"
+
+	"golang.org/x/crypto/bcrypt"
+)
+
+var (
+	ErrEmailInUse   = errors.New("email already in use")
+	ErrWeakPassword = errors.New("password does not meet policy requirements")
+)
+
+type Service struct {
+	repo Repository
 }
 
-func NewUserservice(repo userrepository) UserService {
-	return &userService{repo: repo}
-}
-func (s *userService) Register(user User) (User, error) {
-	return s.repo.create(user)
+func NewService(repo Repository) *Service {
+	return &Service{repo: repo}
 }
 
-func (s *userService) GetUser(id int) (User, error) {
-	return s.repo.getbyid(id)
+// Signup: قوانین ثبت‌نام
+func (s *Service) Signup(name, email, password string) (*User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	// 1) ایمیل تکراری نباشد
+	exists, err := s.repo.FindByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	if exists != nil {
+		return nil, ErrEmailInUse
+	}
+
+	// 2) سیاست رمز عبور 
+	if !passwordStrong(password) {
+		return nil, ErrWeakPassword
+	}
+
+	// 3) هش‌کردن رمز
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4) ساخت و ذخیره کاربر
+	u := &User{
+		Name:         strings.TrimSpace(name),
+		Email:        email,
+		PasswordHash: string(hash),
+		Role:         "member",
+	}
+	if err := s.repo.Create(u); err != nil {
+		return nil, err
+	}
+	return u, nil
 }
-func (s *userService) GetUsers() ([]User, error) {
-	return s.repo.getAll()
-}
-func (s *userService) UpdateUser(user User) (User, error) {
-	return s.repo.update(user)
-}
-func (s *userService) DeleteUser(id int) error {
-	return s.repo.delete(id)
+
+func passwordStrong(p string) bool {
+	if len(p) < 8 {
+		return false
+	}
+	var hasLower, hasUpper, hasDigit bool
+	for _, r := range p {
+		switch {
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		}
+	}
+	return hasLower && hasUpper && hasDigit
 }
