@@ -11,6 +11,8 @@ import (
 var (
 	ErrEmailInUse   = errors.New("email already in use")
 	ErrWeakPassword = errors.New("password does not meet policy requirements")
+	ErrInvalidLogin = errors.New("invalid email or password")
+
 )
 
 type Service struct {
@@ -56,6 +58,23 @@ func (s *Service) Signup(name, email, password string) (*User, error) {
 		return nil, err
 	}
 	return u, nil
+}
+
+// Loginمتد 
+func (s *Service) Login(email, password string) (*User, error) {
+    email = strings.ToLower(strings.TrimSpace(email))
+
+    u, err := s.repo.FindByEmail(email)
+    if err != nil {
+        return nil, err
+    }
+    if u == nil {
+        return nil, ErrInvalidLogin
+    }
+    if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+        return nil, ErrInvalidLogin
+    }
+    return u, nil
 }
 
 func passwordStrong(p string) bool {

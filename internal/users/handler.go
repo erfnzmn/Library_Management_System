@@ -23,6 +23,8 @@ func RegisterUserRoutes(r *gin.Engine, db *gorm.DB, jwtSecret string, jwtTTL tim
 	h := &Handler{svc: svc, jwtSecret: jwtSecret, jwtTTL: jwtTTL}
 
 	r.POST("/users/signup", h.Signup)
+	r.POST("/users/login", h.Login)
+
 }
 
 func (h *Handler) Signup(c *gin.Context) {
@@ -58,6 +60,38 @@ func (h *Handler) Signup(c *gin.Context) {
 		"user":         u,
 	})
 }
+
+func (h *Handler) Login(c *gin.Context) {
+	var req LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "detail": err.Error()})
+		return
+	}
+
+	u, err := h.svc.Login(req.Email, req.Password)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if err.Error() != ErrInvalidLogin.Error() {
+			status = http.StatusInternalServerError
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	token, expSec, err := h.createJWT(u.ID, u.Role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token": token,
+		"token_type":   "Bearer",
+		"expires_in":   expSec,
+		"user":         u,
+	})
+}
+
 
 func (h *Handler) createJWT(userID uint, role string) (string, int64, error) {
 	now := time.Now()
