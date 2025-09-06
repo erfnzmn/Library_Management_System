@@ -5,6 +5,15 @@ import (
 
 	"gorm.io/gorm"
 )
+const (
+	RoleMember  = "member"
+	RoleStudent = "student"
+)
+
+func IsValidRole(role string) bool {
+	return role == RoleMember || role == RoleStudent
+}
+
 
 // مدل دیتابیسی کاربر
 type User struct {
@@ -25,6 +34,8 @@ type SignupRequest struct {
 	Name     string `json:"name" binding:"required"`
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
+	Role     string `json:"role" binding:"required"` // member | student
+
 }
 
 // ورودیِ لاگین

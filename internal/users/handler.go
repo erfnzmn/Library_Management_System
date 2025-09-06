@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
@@ -16,44 +16,48 @@ type Handler struct {
 	jwtTTL    time.Duration
 }
 
-func RegisterUserRoutes(r *gin.Engine, db *gorm.DB, jwtSecret string, jwtTTL time.Duration) {
-	_ = db.AutoMigrate(&User{}) 
+func RegisterUserRoutes(e *echo.Echo, db *gorm.DB, jwtSecret string, jwtTTL time.Duration) {
+	_ = db.AutoMigrate(&User{})
+
 	repo := NewRepository(db)
 	svc := NewService(repo)
 	h := &Handler{svc: svc, jwtSecret: jwtSecret, jwtTTL: jwtTTL}
 
-	r.POST("/users/signup", h.Signup)
-	r.POST("/users/login", h.Login)
-
+	e.POST("/users/signup", h.Signup)
+	e.POST("/users/login", h.Login)
 }
 
-func (h *Handler) Signup(c *gin.Context) {
+//  Signup 
+func (h *Handler) Signup(c echo.Context) error {
 	var req SignupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "detail": err.Error()})
-		return
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request", "detail": err.Error()})
+	}
+	if req.Name == "" || req.Email == "" || req.Password == "" || req.Role == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request", "detail": "name/email/password/role required"})
+	}
+	if !IsValidRole(req.Role) {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid role", "detail": "role must be 'member' or 'student'"})
 	}
 
-	u, err := h.svc.Signup(req.Name, req.Email, req.Password)
+	u, err := h.svc.Signup(req.Name, req.Email, req.Password, req.Role)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err == ErrEmailInUse {
+		switch err {
+		case ErrEmailInUse:
 			status = http.StatusConflict
-		}
-		if err == ErrWeakPassword {
+		case ErrWeakPassword, ErrInvalidRole:
 			status = http.StatusBadRequest
 		}
-		c.JSON(status, gin.H{"error": err.Error()})
-		return
+		return c.JSON(status, echo.Map{"error": err.Error()})
 	}
 
 	token, expSec, err := h.createJWT(u.ID, u.Role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
-		return
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "token generation failed"})
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
+	return c.JSON(http.StatusCreated, echo.Map{
 		"access_token": token,
 		"token_type":   "Bearer",
 		"expires_in":   expSec,
@@ -61,11 +65,15 @@ func (h *Handler) Signup(c *gin.Context) {
 	})
 }
 
-func (h *Handler) Login(c *gin.Context) {
+
+// Login
+func (h *Handler) Login(c echo.Context) error {
 	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "detail": err.Error()})
-		return
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request", "detail": err.Error()})
+	}
+	if req.Email == "" || req.Password == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request", "detail": "email/password required"})
 	}
 
 	u, err := h.svc.Login(req.Email, req.Password)
@@ -74,17 +82,15 @@ func (h *Handler) Login(c *gin.Context) {
 		if err.Error() != ErrInvalidLogin.Error() {
 			status = http.StatusInternalServerError
 		}
-		c.JSON(status, gin.H{"error": err.Error()})
-		return
+		return c.JSON(status, echo.Map{"error": err.Error()})
 	}
 
 	token, expSec, err := h.createJWT(u.ID, u.Role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "token generation failed"})
-		return
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "token generation failed"})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	return c.JSON(http.StatusOK, echo.Map{
 		"access_token": token,
 		"token_type":   "Bearer",
 		"expires_in":   expSec,
@@ -92,11 +98,10 @@ func (h *Handler) Login(c *gin.Context) {
 	})
 }
 
-
+//JWT helper
 func (h *Handler) createJWT(userID uint, role string) (string, int64, error) {
 	now := time.Now()
 	exp := now.Add(h.jwtTTL)
-
 	claims := jwt.MapClaims{
 		"sub":  strconv.Itoa(int(userID)),
 		"role": role,
