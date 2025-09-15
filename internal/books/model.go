@@ -20,12 +20,18 @@ type Book struct {
 	SellingStatus     string `gorm:"type:enum('available','sold_out');default:'available'" json:"selling_status"`
 
 	CoverImage string  `gorm:"type:varchar(255)" json:"cover_image"`
-	Tags       string  `gorm:"type:varchar(255)" json:"tags"` // comma separated keywords
+	Tags       string  `gorm:"type:varchar(255)" json:"tags"`
 	Price      float64 `gorm:"default:0" json:"price"`
 
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	DeletedAt *time.Time `gorm:"index" json:"deleted_at"`
+}
+type favorite struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	UserID    uint      `json:"user_id"`
+	BookID    uint      `json:'book_id`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (Book) TableName() string {
