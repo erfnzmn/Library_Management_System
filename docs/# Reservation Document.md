@@ -65,4 +65,39 @@
 - System triggers reallocation (next user in queue) and sends notifications as needed.
 - Return updated item or users reservation list.
 
+4. 
 
+## Preconditions
+
+- User must be an admin.
+
+## Main Succes Senario
+
+- Admin opens reservation list.
+- Uses filters or reservation id to find the specified reservation.
+- clicks on admin delete and cancels the reservation.
+
+## Postconditions
+
+- Deleted reservation should not in the list anymore or marked as STATUS=CANCELED.
+
+5. 
+
+## preconditions
+
+- At least one copy marked STATUS=AVAILABLE.
+- At least one reservation marked STATUS=QUEUED.
+
+## Main success senario
+
+- Pick the available copy.
+- Fetch the next User from the queue in FIFO order.
+- Update the reservation to STATUS=READY_FOR_PICKUP.
+- Mark the copy STATUS=ON_HOLD.
+- Send notification to the user.
+
+6. 
+
+- each reservation has a Expire Date.
+- if the copy is not picked up by then.
+- the reservation expires and Auto-Allocate will happen next.
