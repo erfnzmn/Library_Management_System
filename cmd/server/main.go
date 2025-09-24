@@ -13,6 +13,8 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
     users "github.com/erfnzmn/Library_Management_System/internal/users"
+	"github.com/erfnzmn/Library_Management_System/pkg/redisclient"
+	"github.com/erfnzmn/Library_Management_System/pkg/rate"
 )
 
 type Config struct {
@@ -29,6 +31,13 @@ type Config struct {
 		DSN      string `mapstructure:"dsn"`
 		Enabled  bool   `mapstructure:"enabled"`
 	} `mapstructure:"database"`
+	    Redis struct {
+        Enabled  bool   `mapstructure:"enabled"`
+        Addr     string `mapstructure:"addr"`
+        Password string `mapstructure:"password"`
+        DB       int    `mapstructure:"db"`
+    } `mapstructure:"redis"`
+
 	JWT struct {
 		Secret    string `mapstructure:"secret"`
 		ExpiresIn string `mapstructure:"expires_in"`
@@ -87,59 +96,93 @@ func openDB(cfg *Config) (*gorm.DB, error) {
 	return db, nil
 }
 
+
 func main() {
-	cfg, err := loadConfig()
-	if err != nil {
-		log.Fatalf("config error: %v", err)
-	}
+    cfg, err := loadConfig()
+    if err != nil {
+        log.Fatalf("config error: %v", err)
+    }
 
-	// Echo app
-	e := echo.New()
-	e.HideBanner = true
+    // Echo app
+    e := echo.New()
+    e.HideBanner = true
 
-	// Middlewares پایه
-	e.Use(middleware.Recover())
-	e.Use(middleware.Logger())
-	e.Use(middleware.CORS())
-	e.Use(middleware.Secure())
+    // Base middlewares
+    e.Use(middleware.Recover())
+    e.Use(middleware.Logger())
+    e.Use(middleware.CORS())
+    e.Use(middleware.Secure())
 
-	// Health check
-	e.GET("/healthz", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]any{
-			"ok":   true,
-			"time": time.Now().UTC(),
-		})
-	})
+    // Health check
+    e.GET("/healthz", func(c echo.Context) error {
+        return c.JSON(http.StatusOK, map[string]any{
+            "ok":   true,
+            "time": time.Now().UTC(),
+        })
+    })
 
-	// اتصال DB 
-	var db *gorm.DB
-	if cfg.Database.Enabled {
-		log.Printf("DB connecting to %s:%d (db=%s)...", cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
-		db, err = openDB(cfg)
-		if err != nil {
-			log.Fatalf("db error: %v", err)
-		}
-		log.Printf("DB connected ✔")
-		defer func() {
-			if sqlDB, _ := db.DB(); sqlDB != nil {
-				_ = sqlDB.Close()
-			}
-		}()
-	}
-	 
-	jwtSecret := cfg.JWT.Secret
-	jwtTTL, err := time.ParseDuration(cfg.JWT.ExpiresIn)
-	if err != nil || jwtTTL <= 0 {
-		jwtTTL = time.Hour
-	}
-	if db != nil {
-		users.RegisterUserRoutes(e, db, jwtSecret, jwtTTL)
-	}
+    // Database
+    var db *gorm.DB
+    if cfg.Database.Enabled {
+        log.Printf("DB connecting to %s:%d (db=%s)...", cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
+        db, err = openDB(cfg)
+        if err != nil {
+            log.Fatalf("db error: %v", err)
+        }
+        log.Printf("DB connected ✔")
+        defer func() {
+            if sqlDB, _ := db.DB(); sqlDB != nil {
+                _ = sqlDB.Close()
+            }
+        }()
+    }
 
+    // 🔹 Redis + login limiter
+    var LoginLimiter *rate.Limiter
+    if cfg.Redis.Enabled {
+        rdb, err := redisclient.New(redisclient.Config{
+            Enabled:  cfg.Redis.Enabled,
+            Addr:     cfg.Redis.Addr,
+            Password: cfg.Redis.Password,
+            DB:       cfg.Redis.DB,
+        })
+        if err != nil {
+            log.Fatalf("redis error: %v", err)
+        }
+        if rdb != nil {
+            defer rdb.Close()
+            log.Printf("Redis connected ✔")
 
-	addr := ":" + cfg.Server.Port
-	log.Printf("server listening on %s", addr)
-	if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
-		e.Logger.Fatal("shutting down the server: ", err)
-	}
+            // Limit: 5 failed logins per 10 minutes per email
+            LoginLimiter = rate.New(rdb, 5, 10*time.Minute)
+
+            // Make it available to handlers
+            e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+                return func(c echo.Context) error {
+                    c.Set("loginLimiter", LoginLimiter)
+                    return next(c)
+                }
+            })
+        }
+    }
+
+    // JWT setup
+    jwtSecret := cfg.JWT.Secret
+    jwtTTL, err := time.ParseDuration(cfg.JWT.ExpiresIn)
+    if err != nil || jwtTTL <= 0 {
+        jwtTTL = time.Hour
+    }
+
+    // Register routes
+    if db != nil {
+        users.RegisterUserRoutes(e, db, jwtSecret, jwtTTL)
+    }
+
+    // Start server
+    addr := ":" + cfg.Server.Port
+    log.Printf("server listening on %s", addr)
+    if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+        e.Logger.Fatal("shutting down the server: ", err)
+    }
 }
+
