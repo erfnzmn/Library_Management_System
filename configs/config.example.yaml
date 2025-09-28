@@ -10,6 +10,12 @@ database:
   name: "library_db"
   enabled: false  
 
+redis:
+  enabled: true
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
 jwt:
   secret: "CHANGE_ME_LONG_RANDOM"
   expires_in: "24h"
