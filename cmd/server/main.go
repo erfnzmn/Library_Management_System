@@ -137,34 +137,33 @@ func main() {
         }()
     }
 
-    // 🔹 Redis + login limiter
-    var LoginLimiter *rate.Limiter
-    if cfg.Redis.Enabled {
-        rdb, err := redisclient.New(redisclient.Config{
-            Enabled:  cfg.Redis.Enabled,
-            Addr:     cfg.Redis.Addr,
-            Password: cfg.Redis.Password,
-            DB:       cfg.Redis.DB,
-        })
-        if err != nil {
-            log.Fatalf("redis error: %v", err)
-        }
-        if rdb != nil {
-            defer rdb.Close()
-            log.Printf("Redis connected ✔")
+    // login limiter (Token Bucket)
+var loginLimiter *rate.Limiter
+if cfg.Redis.Enabled {
+	rdb, err := redisclient.New(redisclient.Config{
+		Enabled:  cfg.Redis.Enabled,
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	if err != nil {
+		log.Fatalf("redis error: %v", err)
+	}
+	if rdb != nil {
+		defer rdb.Close()
+		log.Printf("Redis connected ✔")
 
-            // Limit: 5 failed logins per 10 minutes per email
-            LoginLimiter = rate.New(rdb, 5, 10*time.Minute)
+		loginLimiter = rate.NewTokenBucket(rdb, 5, 1, 2*time.Minute, 20*time.Minute)
 
-            // Make it available to handlers
-            e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-                return func(c echo.Context) error {
-                    c.Set("loginLimiter", LoginLimiter)
-                    return next(c)
-                }
-            })
-        }
-    }
+		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				c.Set("loginLimiter", loginLimiter)
+				return next(c)
+			}
+		})
+	}
+}
+
 
     // JWT setup
     jwtSecret := cfg.JWT.Secret
