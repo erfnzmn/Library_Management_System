@@ -13,6 +13,15 @@ type Repository struct {
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
+func (r *Repository) CreateBook(ctx context.Context, book *Book) error {
+	return r.db.WithContext(ctx).Create(book).Error
+}
+func (r *Repository) UpdateBook(ctx context.Context, book *Book) error {
+	return r.db.WithContext(ctx).Save(book).Error
+}
+func (r *Repository) DeleteBook(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Delete(&Book{}, id).Error
+}
 
 func (r *Repository) ListBooks(ctx context.Context) ([]Book, error) {
 	var books []Book
@@ -20,6 +29,18 @@ func (r *Repository) ListBooks(ctx context.Context) ([]Book, error) {
 		return nil, err
 	}
 	return books, nil
+}
+
+func (r *Repository) FindBookByID(ctx context.Context, id uint) (*Book, error) {
+	var book Book
+	if err := r.db.WithContext(ctx).First(&book, id).Error; err != nil {
+		return nil, err
+	}
+	return &book, nil
+}
+
+func (r *Repository) SaveBook(ctx context.Context, book *Book) error {
+	return r.db.WithContext(ctx).Create(book).Error
 }
 
 func (r *Repository) GetBookByID(ctx context.Context, id uint) (*Book, error) {
@@ -39,11 +60,18 @@ func (r *Repository) SearchBooks(ctx context.Context, q string) ([]Book, error) 
 	}
 	return books, nil
 }
+func (r *Repository) Exists(ctx context.Context, id uint) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&Book{}).Where("id = ?", id).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
 
-func (r *Repository) AddToFavorites(ctx context.Context, userID, bookID int) error {
-	fav := Favorite{UserID: userID, BookID: bookID}
+func (r *Repository) AddToFavorites(ctx context.Context, userID, bookID uint) error {
+	fav := Favorite{UserID: uint(userID), BookID: bookID}
 	return r.db.WithContext(ctx).
-		FirstOrCreate(&fav, Favorite{UserID: userID, BookID: bookID}).Error
+		FirstOrCreate(&fav, Favorite{UserID: fav.UserID, BookID: bookID}).Error
 }
 
 func (r *Repository) GetFavoritesByUser(ctx context.Context, userID int) ([]Book, error) {

@@ -27,7 +27,7 @@ type Book struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 	DeletedAt *time.Time `gorm:"index" json:"deleted_at"`
 }
-type favorite struct {
+type Favorite struct {
 	ID        uint      `gorm:"primarykey" json:"id"`
 	UserID    uint      `json:"user_id"`
 	BookID    uint      `json:'book_id`
