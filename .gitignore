@@ -28,3 +28,7 @@ configs/config.yaml
 *.db
 *.db-shm
 *.db-wal
+go.sum
+go.mod
+go.mod
+go.sum
