@@ -30,7 +30,7 @@ type Book struct {
 type Favorite struct {
 	ID        uint      `gorm:"primarykey" json:"id"`
 	UserID    uint      `json:"user_id"`
-	BookID    uint      `json:'book_id`
+	BookID    uint      `json:"book_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
