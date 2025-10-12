@@ -15,6 +15,7 @@ import (
     users "github.com/erfnzmn/Library_Management_System/internal/users"
 	"github.com/erfnzmn/Library_Management_System/pkg/redisclient"
 	"github.com/erfnzmn/Library_Management_System/pkg/rate"
+	books "github.com/erfnzmn/Library_Management_System/internal/books"
 )
 
 type Config struct {
@@ -129,6 +130,9 @@ func main() {
         if err != nil {
             log.Fatalf("db error: %v", err)
         }
+		if err := db.AutoMigrate(&books.Book{}, &books.Favorite{}); err != nil {
+    log.Fatalf("failed to migrate database: %v", err)
+}
         log.Printf("DB connected ✔")
         defer func() {
             if sqlDB, _ := db.DB(); sqlDB != nil {
@@ -146,6 +150,7 @@ if cfg.Redis.Enabled {
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
 	})
+	
 	if err != nil {
 		log.Fatalf("redis error: %v", err)
 	}
@@ -161,6 +166,14 @@ if cfg.Redis.Enabled {
 				return next(c)
 			}
 		})
+
+		if db != nil{
+			booksRepo := books.NewRepository(db)
+			booksService := books.NewService(booksRepo, rdb)
+			booksHandler := books.NewHandler(booksService)
+			booksHandler.RegisterRoutes(e)
+		}
+		
 	}
 }
 

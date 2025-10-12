@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS books (
+id INT AUTO_INCREMENT PRIMARY KEY,
+title VARCHAR(255) NOT NULL,
+author VARCHAR(255) NOT NULL,
+published_year INT NULL,
+genre VARCHAR(100) NULL,
+available BOOLEAN DEFAULT TRUE,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE
+CURRENT_TIMESTAMP,
+INDEX idx_title (title),
+INDEX idx_author (author)
+);
+CREATE TABLE IF NOT EXISTS favorites (
+id INT AUTO_INCREMENT PRIMARY KEY,
+user_id INT NOT NULL,
+book_id INT NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+UNIQUE KEY uq_user_book (user_id, book_id),
+INDEX idx_user (user_id),
+INDEX idx_book (book_id)
+);
