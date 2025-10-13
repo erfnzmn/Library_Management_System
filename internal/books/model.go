@@ -15,6 +15,8 @@ type Book struct {
 	Genre             string `gorm:"type:varchar(100)" json:"genre"`
 	Language          string `gorm:"type:varchar(50);default:'fa'" json:"language"`
 	Description       string `gorm:"type:text" json:"description"`
+	
+	Stock int `gorm:"not null;default:1" json:"stock"`
 
 	ReservationStatus string `gorm:"type:enum('available','reserved');default:'available'" json:"reservation_status"`
 	SellingStatus     string `gorm:"type:enum('available','sold_out');default:'available'" json:"selling_status"`
