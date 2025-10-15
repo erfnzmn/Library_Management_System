@@ -28,4 +28,4 @@ type Loan struct {
 	UpdatedAt time.Time  `json:"updated_at"`	
 }
 
-func (Loan) TableName() string { return "loans"  }
+func (Loan) TableName() string { return "loans" }

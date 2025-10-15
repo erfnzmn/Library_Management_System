@@ -12,10 +12,14 @@ import (
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"github.com/redis/go-redis/v9"
+
     users "github.com/erfnzmn/Library_Management_System/internal/users"
 	"github.com/erfnzmn/Library_Management_System/pkg/redisclient"
 	"github.com/erfnzmn/Library_Management_System/pkg/rate"
 	books "github.com/erfnzmn/Library_Management_System/internal/books"
+	loans "github.com/erfnzmn/Library_Management_System/internal/loans"
+
 )
 
 type Config struct {
@@ -130,7 +134,7 @@ func main() {
         if err != nil {
             log.Fatalf("db error: %v", err)
         }
-		if err := db.AutoMigrate(&books.Book{}, &books.Favorite{}); err != nil {
+		if err := db.AutoMigrate(&books.Book{}, &books.Favorite{}, &loans.Loan{}); err != nil {
     log.Fatalf("failed to migrate database: %v", err)
 }
         log.Printf("DB connected ✔")
@@ -141,41 +145,35 @@ func main() {
         }()
     }
 
-    // login limiter (Token Bucket)
+var rdb *redis.Client
 var loginLimiter *rate.Limiter
 if cfg.Redis.Enabled {
-	rdb, err := redisclient.New(redisclient.Config{
+	rdb, err = redisclient.New(redisclient.Config{
 		Enabled:  cfg.Redis.Enabled,
 		Addr:     cfg.Redis.Addr,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
 	})
-	
 	if err != nil {
 		log.Fatalf("redis error: %v", err)
 	}
 	if rdb != nil {
 		defer rdb.Close()
 		log.Printf("Redis connected ✔")
-
-		loginLimiter = rate.NewTokenBucket(rdb, 5, 1, 2*time.Minute, 20*time.Minute)
-
-		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(c echo.Context) error {
-				c.Set("loginLimiter", loginLimiter)
-				return next(c)
-			}
-		})
-
-		if db != nil{
-			booksRepo := books.NewRepository(db)
-			booksService := books.NewService(booksRepo, rdb)
-			booksHandler := books.NewHandler(booksService)
-			booksHandler.RegisterRoutes(e)
-		}
-		
 	}
 }
+
+// login limiter setup
+if rdb != nil {
+	loginLimiter = rate.NewTokenBucket(rdb, 5, 1, 2*time.Minute, 20*time.Minute)
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("loginLimiter", loginLimiter)
+			return next(c)
+		}
+	})
+}
+
 
 
     // JWT setup
@@ -186,9 +184,24 @@ if cfg.Redis.Enabled {
     }
 
     // Register routes
-    if db != nil {
+	if db != nil {
         users.RegisterUserRoutes(e, db, jwtSecret, jwtTTL)
+	}
+    if db != nil {
+		// Books
+		booksRepo := books.NewRepository(db)
+		booksService := books.NewService(booksRepo, rdb)
+		booksHandler := books.NewHandler(booksService)
+		booksHandler.RegisterRoutes(e)
+
+		// Loans
+		loansRepo := loans.NewRepository(db)
+		loansService := loans.NewService(db, loansRepo, booksRepo)
+		loansHandler := loans.NewHandler(loansService)
+		loansHandler.RegisterRoutes(e)
     }
+	
+	
 
     // Start server
     addr := ":" + cfg.Server.Port
