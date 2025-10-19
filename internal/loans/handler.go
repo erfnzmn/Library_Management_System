@@ -5,6 +5,10 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
+	echojwt "github.com/labstack/echo-jwt/v4"
+	"github.com/spf13/viper"
+	"github.com/erfnzmn/Library_Management_System/pkg/middleware"
+
 )
 
 type Handler struct {
@@ -18,6 +22,11 @@ func NewHandler(service *Service) *Handler {
 // RegisterRoutes رذ
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	g := e.Group("/api/loans")
+
+	g.Use(echojwt.WithConfig(echojwt.Config{
+		SigningKey:  []byte(viper.GetString("jwt.secret")),
+		TokenLookup: "header:Authorization",
+	}))
 	g.POST("/reserve", h.ReserveBook)
 	g.POST("/:id/confirm", h.ConfirmBorrow)
 	g.POST("/:id/return", h.ReturnBook)
@@ -28,14 +37,18 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 // ReserveBook 
 func (h *Handler) ReserveBook(c echo.Context) error {
 	var req struct {
-		UserID uint `json:"user_id" binding:"required"`
 		BookID uint `json:"book_id" binding:"required"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid input"})
 	}
 
-	if err := h.service.ReserveBook(c.Request().Context(), req.UserID, req.BookID); err != nil {
+	userID, err := middleware.CurrentUserID(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid or missing token"})
+	}
+
+	if err := h.service.ReserveBook(c.Request().Context(), userID, req.BookID); err != nil {
 		return c.JSON(http.StatusConflict, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusCreated, echo.Map{"message": "book reserved successfully"})
