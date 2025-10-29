@@ -19,6 +19,8 @@ import (
 	"github.com/erfnzmn/Library_Management_System/pkg/rate"
 	books "github.com/erfnzmn/Library_Management_System/internal/books"
 	loans "github.com/erfnzmn/Library_Management_System/internal/loans"
+	rabbitmq "github.com/erfnzmn/Library_Management_System/pkg/rabbitmq"
+
 
 )
 
@@ -48,9 +50,21 @@ type Config struct {
 		ExpiresIn string `mapstructure:"expires_in"`
 	} `mapstructure:"jwt"`
 }
+func verifyConfigLoad() {
+	fmt.Println("===================================")
+	fmt.Println("🔍  Config verification started...")
+	fmt.Println("Loaded config file:", viper.ConfigFileUsed())
+	fmt.Println("jwt.secret from viper:", viper.GetString("jwt.secret"))
+	fmt.Println("jwt.expires_in from viper:", viper.GetString("jwt.expires_in"))
+	fmt.Println("===================================")
+}
+
 
 func loadConfig() (*Config, error) {
 	viper.AddConfigPath("configs")
+	viper.AddConfigPath(".")          // اگر از ریشه اجرا شد
+	viper.AddConfigPath("../configs") // اگر از پوشه cmd/server اجرا می‌کنی
+
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 
@@ -104,9 +118,11 @@ func openDB(cfg *Config) (*gorm.DB, error) {
 
 func main() {
     cfg, err := loadConfig()
+	
     if err != nil {
         log.Fatalf("config error: %v", err)
     }
+	verifyConfigLoad()
 
     // Echo app
     e := echo.New()
@@ -163,6 +179,14 @@ if cfg.Redis.Enabled {
 	}
 }
 
+rabbitURL := "amqp://admin:go1234@127.0.0.1:5672/"
+rb, err := rabbitmq.NewRabbitMQ(rabbitURL)
+if err!= nil {
+	log.Fatalf("rabbitmq error: %v", err)
+}
+defer rb.Close()
+
+
 // login limiter setup
 if rdb != nil {
 	loginLimiter = rate.NewTokenBucket(rdb, 5, 1, 2*time.Minute, 20*time.Minute)
@@ -178,29 +202,36 @@ if rdb != nil {
 
     // JWT setup
     jwtSecret := cfg.JWT.Secret
+	//////////////////////////////////////////////////////////////////////
+	log.Printf("JWT secret in handler: '%s' (len=%d)", jwtSecret, len(jwtSecret))
+
+
     jwtTTL, err := time.ParseDuration(cfg.JWT.ExpiresIn)
     if err != nil || jwtTTL <= 0 {
         jwtTTL = time.Hour
     }
 
     // Register routes
-	if db != nil {
-        users.RegisterUserRoutes(e, db, jwtSecret, jwtTTL)
-	}
-    if db != nil {
-		// Books
-		booksRepo := books.NewRepository(db)
-		booksService := books.NewService(booksRepo, rdb)
-		booksHandler := books.NewHandler(booksService)
-		booksHandler.RegisterRoutes(e)
+if db != nil {
+	users.RegisterUserRoutes(e, db, jwtSecret, jwtTTL)
 
-		// Loans
-		loansRepo := loans.NewRepository(db)
-		loansService := loans.NewService(db, loansRepo, booksRepo)
-		loansHandler := loans.NewHandler(loansService)
-		loansHandler.RegisterRoutes(e)
-    }
-	
+	// Books
+	booksRepo := books.NewRepository(db)
+	booksService := books.NewService(booksRepo, rdb)
+	booksHandler := books.NewHandler(booksService)
+	booksHandler.RegisterRoutes(e)
+
+	// Loans
+	loansRepo := loans.NewRepository(db)
+	loansService := loans.NewService(db, loansRepo, booksRepo)
+
+	loansHandler := loans.NewHandler(loansService, rb.Channel, jwtSecret)
+	loansHandler.RegisterRoutes(e)
+
+	if err := rabbitmq.ConsumeReservations(rb.Channel, loansService); err != nil {
+		log.Fatalf("consume error: %v", err)
+	}
+}
 	
 
     // Start server
