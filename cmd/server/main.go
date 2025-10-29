@@ -12,10 +12,16 @@ import (
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"github.com/redis/go-redis/v9"
+
     users "github.com/erfnzmn/Library_Management_System/internal/users"
 	"github.com/erfnzmn/Library_Management_System/pkg/redisclient"
 	"github.com/erfnzmn/Library_Management_System/pkg/rate"
 	books "github.com/erfnzmn/Library_Management_System/internal/books"
+	loans "github.com/erfnzmn/Library_Management_System/internal/loans"
+	rabbitmq "github.com/erfnzmn/Library_Management_System/pkg/rabbitmq"
+
+
 )
 
 type Config struct {
@@ -44,9 +50,21 @@ type Config struct {
 		ExpiresIn string `mapstructure:"expires_in"`
 	} `mapstructure:"jwt"`
 }
+func verifyConfigLoad() {
+	fmt.Println("===================================")
+	fmt.Println("🔍  Config verification started...")
+	fmt.Println("Loaded config file:", viper.ConfigFileUsed())
+	fmt.Println("jwt.secret from viper:", viper.GetString("jwt.secret"))
+	fmt.Println("jwt.expires_in from viper:", viper.GetString("jwt.expires_in"))
+	fmt.Println("===================================")
+}
+
 
 func loadConfig() (*Config, error) {
 	viper.AddConfigPath("configs")
+	viper.AddConfigPath(".")          // اگر از ریشه اجرا شد
+	viper.AddConfigPath("../configs") // اگر از پوشه cmd/server اجرا می‌کنی
+
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 
@@ -100,9 +118,11 @@ func openDB(cfg *Config) (*gorm.DB, error) {
 
 func main() {
     cfg, err := loadConfig()
+	
     if err != nil {
         log.Fatalf("config error: %v", err)
     }
+	verifyConfigLoad()
 
     // Echo app
     e := echo.New()
@@ -130,7 +150,7 @@ func main() {
         if err != nil {
             log.Fatalf("db error: %v", err)
         }
-		if err := db.AutoMigrate(&books.Book{}, &books.Favorite{}); err != nil {
+		if err := db.AutoMigrate(&books.Book{}, &books.Favorite{}, &loans.Loan{}); err != nil {
     log.Fatalf("failed to migrate database: %v", err)
 }
         log.Printf("DB connected ✔")
@@ -141,54 +161,78 @@ func main() {
         }()
     }
 
-    // login limiter (Token Bucket)
+var rdb *redis.Client
 var loginLimiter *rate.Limiter
 if cfg.Redis.Enabled {
-	rdb, err := redisclient.New(redisclient.Config{
+	rdb, err = redisclient.New(redisclient.Config{
 		Enabled:  cfg.Redis.Enabled,
 		Addr:     cfg.Redis.Addr,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
 	})
-	
 	if err != nil {
 		log.Fatalf("redis error: %v", err)
 	}
 	if rdb != nil {
 		defer rdb.Close()
 		log.Printf("Redis connected ✔")
-
-		loginLimiter = rate.NewTokenBucket(rdb, 5, 1, 2*time.Minute, 20*time.Minute)
-
-		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(c echo.Context) error {
-				c.Set("loginLimiter", loginLimiter)
-				return next(c)
-			}
-		})
-
-		if db != nil{
-			booksRepo := books.NewRepository(db)
-			booksService := books.NewService(booksRepo, rdb)
-			booksHandler := books.NewHandler(booksService)
-			booksHandler.RegisterRoutes(e)
-		}
-		
 	}
 }
+
+rabbitURL := "amqp://admin:go1234@127.0.0.1:5672/"
+rb, err := rabbitmq.NewRabbitMQ(rabbitURL)
+if err!= nil {
+	log.Fatalf("rabbitmq error: %v", err)
+}
+defer rb.Close()
+
+
+// login limiter setup
+if rdb != nil {
+	loginLimiter = rate.NewTokenBucket(rdb, 5, 1, 2*time.Minute, 20*time.Minute)
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("loginLimiter", loginLimiter)
+			return next(c)
+		}
+	})
+}
+
 
 
     // JWT setup
     jwtSecret := cfg.JWT.Secret
+	//////////////////////////////////////////////////////////////////////
+	log.Printf("JWT secret in handler: '%s' (len=%d)", jwtSecret, len(jwtSecret))
+
+
     jwtTTL, err := time.ParseDuration(cfg.JWT.ExpiresIn)
     if err != nil || jwtTTL <= 0 {
         jwtTTL = time.Hour
     }
 
     // Register routes
-    if db != nil {
-        users.RegisterUserRoutes(e, db, jwtSecret, jwtTTL)
-    }
+if db != nil {
+	users.RegisterUserRoutes(e, db, jwtSecret, jwtTTL)
+
+	// Books
+	booksRepo := books.NewRepository(db)
+	booksService := books.NewService(booksRepo, rdb)
+	booksHandler := books.NewHandler(booksService)
+	booksHandler.RegisterRoutes(e)
+
+	// Loans
+	loansRepo := loans.NewRepository(db)
+	loansService := loans.NewService(db, loansRepo, booksRepo)
+
+	loansHandler := loans.NewHandler(loansService, rb.Channel, jwtSecret)
+	loansHandler.RegisterRoutes(e)
+
+	if err := rabbitmq.ConsumeReservations(rb.Channel, loansService); err != nil {
+		log.Fatalf("consume error: %v", err)
+	}
+}
+	
 
     // Start server
     addr := ":" + cfg.Server.Port
