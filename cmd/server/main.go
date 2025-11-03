@@ -9,19 +9,17 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"github.com/redis/go-redis/v9"
 
-    users "github.com/erfnzmn/Library_Management_System/internal/users"
-	"github.com/erfnzmn/Library_Management_System/pkg/redisclient"
-	"github.com/erfnzmn/Library_Management_System/pkg/rate"
 	books "github.com/erfnzmn/Library_Management_System/internal/books"
 	loans "github.com/erfnzmn/Library_Management_System/internal/loans"
+	users "github.com/erfnzmn/Library_Management_System/internal/users"
 	rabbitmq "github.com/erfnzmn/Library_Management_System/pkg/rabbitmq"
-
-
+	"github.com/erfnzmn/Library_Management_System/pkg/rate"
+	"github.com/erfnzmn/Library_Management_System/pkg/redisclient"
 )
 
 type Config struct {
@@ -179,7 +177,7 @@ if cfg.Redis.Enabled {
 	}
 }
 
-rabbitURL := "amqp://admin:go1234@127.0.0.1:5672/"
+rabbitURL := "amqp://guest:guest@127.0.0.1:5672/"
 rb, err := rabbitmq.NewRabbitMQ(rabbitURL)
 if err!= nil {
 	log.Fatalf("rabbitmq error: %v", err)

@@ -1,8 +1,8 @@
 package loans
 
 import (
-	"log"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -31,10 +31,8 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 
 	g := e.Group("/api/loans")
 
-	g.Use(echojwt.WithConfig(echojwt.Config{
-		SigningKey:  []byte(h.jwtSecret),
-		TokenLookup: "header:Authorization:Bearer",
-	}))
+	g.Use(echojwt.JWT([]byte(h.jwtSecret)))
+
 	g.POST("/reserve", h.ReserveBook)
 	g.POST("/:id/confirm", h.ConfirmBorrow)
 	g.POST("/:id/return", h.ReturnBook)
