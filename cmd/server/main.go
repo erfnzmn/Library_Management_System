@@ -42,11 +42,19 @@ type Config struct {
         Password string `mapstructure:"password"`
         DB       int    `mapstructure:"db"`
     } `mapstructure:"redis"`
+	RabbitMQ struct {
+		User     string `mapstructure:"user"`
+		Password string `mapstructure:"password"`
+		Host     string `mapstructure:"host"`
+		Port     int    `mapstructure:"port"`
+		VHost    string `mapstructure:"vhost"`
+	} `mapstructure:"rabbitmq"`
 
 	JWT struct {
 		Secret    string `mapstructure:"secret"`
 		ExpiresIn string `mapstructure:"expires_in"`
 	} `mapstructure:"jwt"`
+	
 }
 func verifyConfigLoad() {
 	fmt.Println("===================================")
@@ -177,7 +185,15 @@ if cfg.Redis.Enabled {
 	}
 }
 
-rabbitURL := "amqp://guest:guest@127.0.0.1:5672/"
+rabbitURL := fmt.Sprintf(
+    "amqp://%s:%s@%s:%d%s",
+    cfg.RabbitMQ.User,
+    cfg.RabbitMQ.Password,
+    cfg.RabbitMQ.Host,
+    cfg.RabbitMQ.Port,
+    cfg.RabbitMQ.VHost,
+)
+
 rb, err := rabbitmq.NewRabbitMQ(rabbitURL)
 if err!= nil {
 	log.Fatalf("rabbitmq error: %v", err)

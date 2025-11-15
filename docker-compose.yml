@@ -1,0 +1,56 @@
+
+services:
+  app:           
+    build: .     
+    container_name: library
+    ports:
+      - "8080:8080"
+    depends_on:
+      # - mysql
+      - redis
+      - rabbitmq
+    environment:
+      - DB_HOST=host.docker.internal
+      - REDIS_HOST=redis
+      - RABBITMQ_HOST=rabbitmq
+    networks:
+      - library-net
+
+  # mysql:       
+  #   image: mysql:8.0
+  #   container_name: mysql
+  #   restart: always
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=yourpassword
+  #     - MYSQL_DATABASE=library_db
+  #   ports:
+  #     - "3306:3306"
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #   networks:
+  #     - library-net
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - library-net
+
+  rabbitmq:      
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - library-net
+
+# volumes:
+#   mysql_data:
+
+networks:
+  library-net:

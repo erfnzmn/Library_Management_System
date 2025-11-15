@@ -1,0 +1,29 @@
+# Binaries
+server
+*.exe
+*.out
+
+# Build artifacts
+bin/
+build/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Version control
+.git
+.gitignore
+
+# IDE/editor files
+.vscode
+.idea
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docs or other unused files
+docs/
+README.md
