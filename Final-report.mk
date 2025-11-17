@@ -26,14 +26,13 @@ The Library Management System provides backend functionality for:
 
 ##  Key Features
 
-- ✔ JWT-based authentication  
-- ✔ Clean Architecture (Handlers → Services → Repositories)
-- ✔ MySQL migrations included  
-- ✔ Redis caching for book performance  
-- ✔ Redis-backed Token Bucket rate limiting  
-- ✔ RabbitMQ asynchronous reservation queue  
-- ✔ Dockerized deployment  
-- ✔ Configurable environment using Viper  
+-  JWT-based authentication  
+-  Clean Architecture (Handlers → Services → Repositories)
+-  MySQL migrations included  
+-  Redis-backed Token Bucket rate limiting  
+-  RabbitMQ asynchronous reservation queue  
+-  Dockerized deployment  
+- Configurable environment using Viper  
 
 
 ---
